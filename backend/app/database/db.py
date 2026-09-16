@@ -68,8 +68,12 @@ def init_db() -> None:
 def _ensure_telemetry_columns() -> None:
     if not DATABASE_URL.startswith("sqlite"):
         return
-
-    columns = {
+    
+    machine_columns = {
+        "serial_port": "TEXT",
+        "baud": "INTEGER NOT NULL DEFAULT 115200",
+    }
+    inference_columns = {
         "rpm_raw": "REAL",
         "rpm_filtered": "REAL",
         "rpm_pulses": "INTEGER",
@@ -81,15 +85,26 @@ def _ensure_telemetry_columns() -> None:
     }
 
     with engine.begin() as connection:
-        existing = {
+        machine_existing = {
+            row[1]
+            for row in connection.exec_driver_sql(
+                "PRAGMA table_info(machines)"
+            )
+        }
+
+        for name, column_type in machine_columns.items():
+            if name not in machine_existing:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE machines ADD COLUMN {name} {column_type}"
+                )
+        inference_existing = {
             row[1]
             for row in connection.exec_driver_sql(
                 "PRAGMA table_info(inferences)"
             )
         }
-
-        for name, column_type in columns.items():
-            if name not in existing:
+        for name, column_type in inference_columns.items():
+            if name not in inference_existing:
                 connection.exec_driver_sql(
                     f"ALTER TABLE inferences ADD COLUMN {name} {column_type}"
                 )

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import machine_csv_path
 from app.database.db import ensure_default_machine, init_db, persist_inference
 from app.routers.api import router
-from app.services.replay import ReplayEngine
+from app.services.monitor import MonitorEngine
 
 
 app = FastAPI(
@@ -23,7 +23,7 @@ app.add_middleware(
 )
 
 
-replay = ReplayEngine()
+replay = MonitorEngine()
 
 
 @app.on_event("startup")
@@ -39,14 +39,16 @@ def startup() -> None:
 
     replay.subscribe(persist)
 
+@app.on_event("shutdown")
+def shutdown() -> None:
+    replay.stop_all()
 
 app.include_router(router)
 
-
-@app.get("/")
-def root():
-    return {
-        "service": "industrial-monitor",
-        "machine": "Máquina 01",
-        "docs": "/docs",
-    }
+# @app.get("/")
+# def root():
+#     return {
+#         "service": "industrial-monitor",
+#         "machine": "Máquina 01",
+#         "docs": "/docs",
+#     }
