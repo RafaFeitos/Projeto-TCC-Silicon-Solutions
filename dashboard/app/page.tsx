@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import InferenceList from "../components/InferenceList";
 import SignalChart from "../components/SignalChart";
@@ -8,18 +13,25 @@ import StatusBadge from "../components/StatusBadge";
 
 import {
   API_URL,
-  getDataset,
-  getHistory,
-  getState,
-  resetReplay,
-  startReplay,
-  stopReplay,
+  getMachineHistory,
+  getMachineMetrics,
+  getMachineState,
+  getMachineStatus,
+  getMachines,
+  getOverview,
+  registerMachine,
+  resetMachineReplay,
+  startMachineReplay,
+  stopMachineReplay,
 } from "../lib/api";
 
 import type {
   CurrentState,
-  DatasetInfo,
   Inference,
+  MachineCreate,
+  MachineInfo,
+  MachineMetrics,
+  OverviewResponse,
 } from "../lib/types";
 
 
@@ -38,13 +50,20 @@ const emptyState: CurrentState = {
   severity: null,
 };
 
+function emptyStateFor(
+  machine?: MachineInfo | null,
+): CurrentState {
+  return {
+    ...emptyState,
+    machine_id: machine?.id ?? 1,
+    machine_name:
+      machine?.name ?? "Máquina 01",
+  };
+}
 
 type Tab =
   | "machine"
-  | "overview"
-  | "dataset"
-  | "inferences";
-
+  | "overview";
 
 function formatTime(value: string) {
   if (!value) {
@@ -65,6 +84,26 @@ function classLabel(value: string) {
   return value.replaceAll("_", " ");
 }
 
+function formatPercent(
+  value: number | null | undefined,
+) {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  return `${value.toFixed(1)}%`;
+}
+
+
+function formatHours(
+  value: number | null | undefined,
+) {
+  if (value === null || value === undefined) {
+    return "Sem falhas";
+  }
+
+  return `${value.toFixed(1)} h`;
+}
 
 function normalizeState(
   value: Partial<CurrentState>,
@@ -88,96 +127,180 @@ function normalizeState(
 
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("machine");
+const [tab, setTab] =
+  useState<Tab>("overview");
 
-  const [state, setState] =
-    useState<CurrentState>(emptyState);
+const [machines, setMachines] =
+  useState<MachineInfo[]>([]);
 
-  const [history, setHistory] =
-    useState<Inference[]>([]);
+const [selectedMachineId, setSelectedMachineId] =
+  useState(1);
 
-  const [dataset, setDataset] =
-    useState<DatasetInfo | null>(null);
+const [overview, setOverview] =
+  useState<OverviewResponse | null>(null);
 
-  const [running, setRunning] =
-    useState(false);
+const [metrics, setMetrics] =
+  useState<MachineMetrics | null>(null);
 
-  const [error, setError] =
-    useState("");
+const [state, setState] =
+  useState<CurrentState>(emptyState);
 
-  const [hydrated, setHydrated] =
-    useState(false);
+const [history, setHistory] =
+  useState<Inference[]>([]);
+
+const [running, setRunning] =
+  useState(false);
+
+const [error, setError] =
+  useState("");
+
+const [hydrated, setHydrated] =
+  useState(false);
+
+const [showMachineForm, setShowMachineForm] =
+  useState(false);
+
+const [newMachine, setNewMachine] =
+  useState<MachineCreate>({
+    name: "",
+    ideal_cycle_time_seconds: null,
+    total_count: 0,
+    good_count: 0,
+  });
+
+const selectedMachine = useMemo(
+  () =>
+    machines.find(
+      (machine) =>
+        machine.id === selectedMachineId,
+    ) ??
+    machines[0] ??
+    null,
+  [machines, selectedMachineId],
+);
+
+useEffect(() => {
+  setHydrated(true);
+
+  Promise.all([
+    getMachines(),
+    getOverview(),
+  ])
+    .then(([machineList, overviewData]) => {
+      setMachines(machineList);
+      setOverview(overviewData);
+
+      if (machineList.length > 0) {
+        setSelectedMachineId(
+          machineList[0].id,
+        );
+      }
+    })
+    .catch((err) =>
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Erro ao conectar à API",
+      ),
+    );
+}, []);
 
 
-  useEffect(() => {
-    setHydrated(true);
+useEffect(() => {
+  if (!selectedMachine) {
+    return;
+  }
 
-    Promise.all([
-      getDataset(),
-      getHistory(),
-      getState(),
-    ])
-      .then(([ds, hist, current]) => {
-        setDataset(ds);
-        setHistory(hist);
+  const machineId =
+    selectedMachine.id;
+
+  Promise.all([
+    getMachineHistory(machineId),
+    getMachineState(machineId),
+    getMachineMetrics(machineId),
+    getMachineStatus(machineId),
+  ])
+    .then(
+      ([
+        machineHistory,
+        current,
+        machineMetrics,
+        machineStatus,
+      ]) => {
+        setHistory(machineHistory);
+        setMetrics(machineMetrics);
+        setRunning(machineStatus.running);
 
         if (current) {
-          setState(normalizeState(current));
+          setState(
+            normalizeState(current),
+          );
+        } else {
+          setState(
+            emptyStateFor(
+              selectedMachine,
+            ),
+          );
         }
-      })
-      .catch((err) =>
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Erro ao conectar à API",
-        ),
-      );
-
-
-    const source =
-      new EventSource(`${API_URL}/api/stream`);
-
-
-    source.onmessage = (event) => {
-      const item =
-        JSON.parse(event.data) as Inference;
-
-      const normalized = normalizeState({
-        ...item,
-        machine_name: "Máquina 01",
-      });
-
-      setState(normalized);
-
-      setHistory((previous) =>
-        [...previous, item].slice(-120),
-      );
-    };
-
-
-    source.onerror = () =>
+      },
+    )
+    .catch((err) =>
       setError(
-        "API desconectada — confira se o backend está rodando na porta 8000.",
-      );
+        err instanceof Error
+          ? err.message
+          : "Erro ao carregar máquina",
+      ),
+    );
 
 
-    return () => {
-      source.close();
-    };
-  }, []);
-
-
-  const alertCount = useMemo(
-    () =>
-      history.filter(
-        (item) => item.alert,
-      ).length,
-    [history],
+  const source = new EventSource(
+    `${API_URL}/api/machines/${machineId}/stream`,
   );
 
+  source.onmessage = (event) => {
+    const item =
+      JSON.parse(event.data) as Inference;
 
-  const runningCount =
-    state.state === "OPERANDO" ? 1 : 0;
+    setState(
+      normalizeState({
+        ...item,
+        machine_name:
+          selectedMachine.name,
+      }),
+    );
+
+    setHistory((previous) =>
+      [...previous, item].slice(-120),
+    );
+
+    getMachineMetrics(machineId)
+      .then(setMetrics)
+      .catch(() => {});
+
+    getOverview()
+      .then(setOverview)
+      .catch(() => {});
+  };
+
+  source.onerror = () =>
+    setError(
+      "API desconectada — confira se o backend está rodando na porta 8000.",
+    );
+
+  return () => {
+    source.close();
+  };
+}, [
+  selectedMachineId,
+  selectedMachine?.name,
+]);
+
+const alertCount =
+  overview?.metrics.alert_count ?? 0;
+
+
+const runningCount =
+  overview?.metrics.operating_count ?? 0;
 
 
   const confidence = Math.max(
@@ -190,7 +313,9 @@ export default function Home() {
     setError("");
 
     try {
-      await startReplay();
+      await startMachineReplay(
+        selectedMachineId,
+      );
       setRunning(true);
     } catch (err) {
       setError(
@@ -204,7 +329,9 @@ export default function Home() {
 
   async function handleStop() {
     try {
-      await stopReplay();
+      await stopMachineReplay(
+        selectedMachineId,
+      );
       setRunning(false);
     } catch (err) {
       setError(
@@ -220,10 +347,24 @@ export default function Home() {
     setError("");
 
     try {
-      await resetReplay();
+      await resetMachineReplay(
+        selectedMachineId,
+      );
 
       setHistory([]);
-      setState(emptyState);
+      setState(
+        emptyStateFor(selectedMachine),
+      );
+      setMetrics(
+        selectedMachine
+          ? await getMachineMetrics(
+            selectedMachine.id,
+          )
+          : null,
+      );
+
+      setOverview(await getOverview());
+      
       setRunning(false);
     } catch (err) {
       setError(
@@ -233,7 +374,70 @@ export default function Home() {
       );
     }
   }
+async function handleRegisterMachine(
+  event: FormEvent<HTMLFormElement>,
+) {
+  event.preventDefault();
 
+  setError("");
+
+  if (
+    newMachine.good_count >
+    newMachine.total_count
+  ) {
+    setError(
+      "A produção boa não pode ser maior que a produção total.",
+    );
+
+    return;
+  }
+
+  try {
+    const created =
+      await registerMachine(
+        newMachine,
+      );
+
+    const [
+      machineList,
+      overviewData,
+    ] = await Promise.all([
+      getMachines(),
+      getOverview(),
+    ]);
+
+    setMachines(machineList);
+    setOverview(overviewData);
+
+    setSelectedMachineId(
+      created.id,
+    );
+
+    setState(
+      emptyStateFor(created),
+    );
+
+    setHistory([]);
+    setMetrics(null);
+
+    setNewMachine({
+      name: "",
+      ideal_cycle_time_seconds:
+        null,
+      total_count: 0,
+      good_count: 0,
+    });
+
+    setShowMachineForm(false);
+    setTab("machine");
+  } catch (err) {
+    setError(
+      err instanceof Error
+        ? err.message
+        : "Não foi possível cadastrar a máquina.",
+    );
+  }
+}
 
   return (
     <main className="shell">
@@ -277,43 +481,38 @@ export default function Home() {
               Visão geral
             </button>
 
-            <button
-              className={
-                tab === "machine"
-                  ? "tab active"
-                  : "tab"
-              }
-              onClick={() =>
-                setTab("machine")
-              }
-            >
-              Máquina 01
-            </button>
+            {machines.map((machine) => (
+              <button
+                key={machine.id}
+                className={
+                  tab === "machine" &&
+                  selectedMachineId ===
+                    machine.id
+                    ? "tab active"
+                    : "tab"
+                }
+                onClick={() => {
+                  setSelectedMachineId(
+                    machine.id,
+                  );
+
+                  setTab("machine");
+                }}
+              >
+                {machine.name}
+              </button>
+            ))}
 
             <button
-              className={
-                tab === "dataset"
-                  ? "tab active"
-                  : "tab"
-              }
+              className="tab tab-add"
+              title="Adicionar máquina"
               onClick={() =>
-                setTab("dataset")
+                setShowMachineForm(
+                  (value) => !value,
+                )
               }
             >
-              Dataset
-            </button>
-
-            <button
-              className={
-                tab === "inferences"
-                  ? "tab active"
-                  : "tab"
-              }
-              onClick={() =>
-                setTab("inferences")
-              }
-            >
-              Inferências
+              +
             </button>
           </nav>
         </div>
@@ -360,6 +559,124 @@ export default function Home() {
       </header>
 
 
+      {showMachineForm ? (
+        <form
+          className="machine-form panel"
+          onSubmit={handleRegisterMachine}
+        >
+          <div className="panel-head">
+            <div>
+              <span className="eyebrow">
+                NOVO EQUIPAMENTO
+              </span>
+
+              <h2>Registrar máquina</h2>
+            </div>
+          </div>
+
+
+          <div className="machine-form-grid">
+            <label className="machine-field">
+              <span>Nome</span>
+
+              <input
+                value={newMachine.name ?? ""}
+                placeholder="Máquina 02"
+                onChange={(event) =>
+                  setNewMachine({
+                    ...newMachine,
+                    name: event.target.value,
+                  })
+                }
+              />
+            </label>
+
+
+            <label className="machine-field">
+              <span>Ciclo ideal (s)</span>
+
+              <input
+                type="number"
+                min="0.001"
+                step="0.001"
+                value={
+                  newMachine.ideal_cycle_time_seconds ??
+                  ""
+                }
+                onChange={(event) =>
+                  setNewMachine({
+                    ...newMachine,
+                    ideal_cycle_time_seconds:
+                      event.target.value
+                        ? Number(event.target.value)
+                        : null,
+                  })
+                }
+              />
+            </label>
+
+
+            <label className="machine-field">
+              <span>Produção total</span>
+
+              <input
+                type="number"
+                min="0"
+                value={newMachine.total_count}
+                onChange={(event) =>
+                  setNewMachine({
+                    ...newMachine,
+                    total_count: Number(
+                      event.target.value,
+                    ),
+                  })
+                }
+              />
+            </label>
+
+
+            <label className="machine-field">
+              <span>Produção boa</span>
+
+              <input
+                type="number"
+                min="0"
+                value={newMachine.good_count}
+                onChange={(event) =>
+                  setNewMachine({
+                    ...newMachine,
+                    good_count: Number(
+                      event.target.value,
+                    ),
+                  })
+                }
+              />
+            </label>
+          </div>
+
+
+          <div className="machine-form-actions">
+            <button
+              type="button"
+              className="ghost"
+              onClick={() =>
+                setShowMachineForm(false)
+              }
+            >
+              Cancelar
+            </button>
+
+            <button
+              type="submit"
+              className="control"
+            >
+              Registrar máquina
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+
       {error ? (
         <div className="error-banner">
           {error}
@@ -379,47 +696,40 @@ export default function Home() {
             </div>
 
             <span className="section-note">
-              1 máquina monitorada
+              {overview?.metrics.machine_count ?? 0}{" "}
+              máquinas registradas
             </span>
           </div>
 
 
           <section className="kpis">
             <div className="kpi">
-              <span>ESTADO ATUAL</span>
+              <span>OEE</span>
 
-              <StatusBadge
-                state={state.state}
-                severity={state.severity}
-              />
+              <strong>
+                {formatPercent(
+                  overview?.metrics.oee,
+                )}
+              </strong>
 
               <small>
-                {classLabel(
-                  state.predicted_class,
-                )}
+                eficiência geral das máquinas
               </small>
             </div>
 
 
             <div className="kpi">
-              <span>CONFIANÇA</span>
+              <span>MTBF</span>
 
               <strong>
-                {Math.round(
-                  confidence * 100,
+                {formatHours(
+                  overview?.metrics.mtbf_hours,
                 )}
-                %
               </strong>
 
-              <div className="progress">
-                <i
-                  style={{
-                    width: `${
-                      confidence * 100
-                    }%`,
-                  }}
-                />
-              </div>
+              <small>
+                tempo médio entre falhas
+              </small>
             </div>
 
 
@@ -427,7 +737,8 @@ export default function Home() {
               <span>MÁQUINAS</span>
 
               <strong>
-                {runningCount}/1
+                {runningCount}/
+                {overview?.metrics.machine_count ?? 0}
               </strong>
 
               <small>
@@ -444,161 +755,114 @@ export default function Home() {
               </strong>
 
               <small>
-                detectados no replay
+                alertas ativos
               </small>
             </div>
           </section>
 
 
-          <section className="overview-grid">
-            <div className="panel machine-summary">
-              <div className="panel-head">
-                <div>
-                  <span className="eyebrow">
-                    ATIVO
-                  </span>
-
-                  <h2>Máquina 01</h2>
-                </div>
-
-                <StatusBadge
-                  state={state.state}
-                  severity={
-                    state.severity
-                  }
-                />
-              </div>
-
-
-              <div className="machine-summary-body">
-                <div>
-                  <span className="metric-label">
-                    Equipamento
-                  </span>
-
-                  <strong>
-                    Máquina 01
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="metric-label">
-                    Leitura atual
-                  </span>
-
-                  <strong>
-                    {state.signal_value.toFixed(
-                      4,
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="metric-label">
-                    RMS móvel
-                  </span>
-
-                  <strong>
-                    {state.rms.toFixed(4)}
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="metric-label">
-                    Última inferência
-                  </span>
-
-                  <strong>
-                    {hydrated
-                      ? formatTime(
-                          state.timestamp,
-                        )
-                      : "—"}
-                  </strong>
-                </div>
-              </div>
-
-
-              <button
-                className="inline-action"
-                onClick={() =>
-                  setTab("machine")
-                }
-              >
-                Abrir máquina 01
-                <span>→</span>
-              </button>
-            </div>
-
-
-            <div className="panel">
-              <div className="panel-head">
-                <div>
-                  <span className="eyebrow">
-                    EVENTOS
-                  </span>
-
-                  <h2>
-                    Alertas recentes
-                  </h2>
-                </div>
-
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    setTab("inferences")
-                  }
+          <section className="overview-machines">
+            {(overview?.machines ?? []).map(
+              (summary) => (
+                <div
+                  className="panel machine-summary"
+                  key={summary.machine.id}
                 >
-                  Ver tudo
-                </button>
-              </div>
+                  <div className="panel-head">
+                    <div>
+                      <span className="eyebrow">
+                        MÁQUINA
+                      </span>
 
+                      <h2>
+                        {summary.machine.name}
+                      </h2>
+                    </div>
 
-              <div className="compact-list">
-                {history
-                  .filter(
-                    (item) => item.alert,
-                  )
-                  .slice(-5)
-                  .reverse()
-                  .map(
-                    (item, index) => (
-                      <div
-                        className="compact-row"
-                        key={`${item.timestamp}-${index}`}
-                      >
-                        <div>
-                          <strong>
-                            {item.alert}
-                          </strong>
-
-                          <span>
-                            {hydrated
-                              ? formatTime(
-                                  item.timestamp,
-                                )
-                              : "—"}
-                          </span>
-                        </div>
-
-                        <span className="severity-text">
-                          {item.severity ??
-                            "—"}
-                        </span>
-                      </div>
-                    ),
-                  )}
-
-                {!history.some(
-                  (item) => item.alert,
-                ) ? (
-                  <div className="empty">
-                    Nenhum alerta
-                    registrado.
+                    <StatusBadge
+                      state={
+                        summary.state?.state ??
+                        "AGUARDANDO"
+                      }
+                      severity={
+                        summary.state?.severity ??
+                        null
+                      }
+                    />
                   </div>
-                ) : null}
+
+
+                  <div className="machine-summary-body">
+                    <div>
+                      <span className="metric-label">
+                        OEE
+                      </span>
+
+                      <strong>
+                        {formatPercent(
+                          summary.metrics.oee,
+                        )}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span className="metric-label">
+                        MTBF
+                      </span>
+
+                      <strong>
+                        {formatHours(
+                          summary.metrics.mtbf_hours,
+                        )}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span className="metric-label">
+                        Disponibilidade
+                      </span>
+
+                      <strong>
+                        {formatPercent(
+                          summary.metrics.availability,
+                        )}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span className="metric-label">
+                        Falhas
+                      </span>
+
+                      <strong>
+                        {summary.metrics.failure_count}
+                      </strong>
+                    </div>
+                  </div>
+
+
+                  <button
+                    className="inline-action"
+                    onClick={() => {
+                      setSelectedMachineId(
+                        summary.machine.id,
+                      );
+
+                      setTab("machine");
+                    }}
+                  >
+                    Abrir {summary.machine.name}
+                    <span>→</span>
+                  </button>
+                </div>
+              ),
+            )}
+
+            {!overview?.machines.length ? (
+              <div className="panel empty">
+                Nenhuma máquina registrada.
               </div>
-            </div>
+            ) : null}
           </section>
         </section>
       )}
@@ -609,10 +873,13 @@ export default function Home() {
           <div className="section-heading">
             <div>
               <span className="eyebrow">
-                MÁQUINA 01
+                MÁQUINA
               </span>
 
-              <h2>Máquina 01</h2>
+              <h2>
+                {selectedMachine?.name ??
+                  "Máquina"}
+              </h2>
             </div>
 
             <span className="section-note">
@@ -688,6 +955,67 @@ export default function Home() {
               <small>
                 janela recente
               </small>
+            </div>
+          </section>
+
+
+          <section className="kpis metrics-kpis">
+            <div className="kpi">
+              <span>OEE</span>
+
+              <strong>
+                {formatPercent(metrics?.oee)}
+              </strong>
+
+              <small>
+                eficiência geral
+              </small>
+            </div>
+
+
+            <div className="kpi">
+              <span>MTBF</span>
+
+              <strong>
+                {formatHours(metrics?.mtbf_hours)}
+              </strong>
+
+              <small>
+                tempo médio entre falhas
+              </small>
+            </div>
+
+
+            <div className="kpi">
+              <span>DISPONIBILIDADE</span>
+
+              <strong>
+                {formatPercent(
+                  metrics?.availability,
+                )}
+              </strong>
+            </div>
+
+
+            <div className="kpi">
+              <span>PERFORMANCE</span>
+
+              <strong>
+                {formatPercent(
+                  metrics?.performance,
+                )}
+              </strong>
+            </div>
+
+
+            <div className="kpi">
+              <span>QUALIDADE</span>
+
+              <strong>
+                {formatPercent(
+                  metrics?.quality,
+                )}
+              </strong>
             </div>
           </section>
 
@@ -816,7 +1144,7 @@ export default function Home() {
                 </div>
               )}
 
-
+              
               <div className="info-list">
                 <div>
                   <span>
@@ -850,7 +1178,8 @@ export default function Home() {
                   <span>Dataset</span>
 
                   <strong>
-                    {dataset?.file_name ??
+                    {selectedMachine
+                      ?.dataset_file ??
                       "aguardando CSV"}
                   </strong>
                 </div>
@@ -872,14 +1201,7 @@ export default function Home() {
                   </h2>
                 </div>
 
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    setTab("inferences")
-                  }
-                >
-                  Abrir histórico
-                </button>
+
               </div>
 
               <InferenceList
@@ -904,26 +1226,35 @@ export default function Home() {
                   <span>Arquivo</span>
 
                   <strong>
-                    {dataset?.file_name ??
-                      "Nenhum CSV detectado"}
+                    {selectedMachine
+                      ?.dataset_file ?? "—"}
                   </strong>
                 </div>
 
                 <div>
-                  <span>Sinal</span>
+                  <span>Produção total</span>
 
                   <strong>
-                    {dataset?.signal_column ??
-                      "—"}
+                    {metrics?.total_count ?? 0}
                   </strong>
                 </div>
 
                 <div>
-                  <span>Amostras</span>
+                  <span>Produção boa</span>
 
                   <strong>
-                    {dataset?.rows ??
-                      "—"}
+                    {metrics?.good_count ?? 0}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Ciclo ideal</span>
+
+                  <strong>
+                    {metrics
+                      ?.ideal_cycle_time_seconds
+                      ? `${metrics.ideal_cycle_time_seconds} s`
+                      : "—"}
                   </strong>
                 </div>
               </div>
@@ -933,154 +1264,13 @@ export default function Home() {
       )}
 
 
-      {tab === "dataset" && (
-        <section className="page-section narrow-page">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">
-                DADOS
-              </span>
-
-              <h2>Dataset</h2>
-            </div>
-
-            <span className="section-note">
-              Origem da leitura utilizada
-            </span>
-          </div>
-
-
-          <div className="panel dataset-panel">
-            <div className="dataset-header">
-              <div>
-                <span className="eyebrow">
-                  ARQUIVO ATIVO
-                </span>
-
-                <h3>
-                  {dataset?.file_name ??
-                    "Nenhum CSV detectado"}
-                </h3>
-              </div>
-
-              <span className="file-state">
-                <i />
-                detectado
-              </span>
-            </div>
-
-
-            <div className="dataset-grid">
-              <div>
-                <span>
-                  Linhas válidas
-                </span>
-
-                <strong>
-                  {dataset?.rows ?? "—"}
-                </strong>
-              </div>
-
-              <div>
-                <span>
-                  Coluna do sinal
-                </span>
-
-                <strong>
-                  {dataset?.signal_column ??
-                    "—"}
-                </strong>
-              </div>
-
-              <div>
-                <span>
-                  Coluna de rótulo
-                </span>
-
-                <strong>
-                  {dataset?.label_column ??
-                    "não informado"}
-                </strong>
-              </div>
-
-              <div>
-                <span>
-                  Coluna temporal
-                </span>
-
-                <strong>
-                  {dataset?.timestamp_column ??
-                    "não informado"}
-                </strong>
-              </div>
-            </div>
-
-
-            <div className="column-list">
-              <span className="eyebrow">
-                COLUNAS ENCONTRADAS
-              </span>
-
-              <div className="tags">
-                {(dataset?.columns ?? []).map(
-                  (column) => (
-                    <span key={column}>
-                      {column}
-                    </span>
-                  ),
-                )}
-              </div>
-            </div>
-
-
-            <div className="pipeline">
-              <span>CSV</span>
-              <b>→</b>
-              <span>Replay</span>
-              <b>→</b>
-              <span>Inferência</span>
-              <b>→</b>
-              <span>Estado</span>
-              <b>→</b>
-              <span>Dashboard</span>
-            </div>
-          </div>
-        </section>
-      )}
-
-
-      {tab === "inferences" && (
-        <section className="page-section narrow-page">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">
-                MODELO
-              </span>
-
-              <h2>
-                Inferências recentes
-              </h2>
-            </div>
-
-            <span className="section-note">
-              Últimas {history.length} leituras
-              recebidas
-            </span>
-          </div>
-
-          <div className="panel">
-            <InferenceList
-              data={[...history]
-                .reverse()
-                .slice(0, 40)}
-            />
-          </div>
-        </section>
-      )}
-
-
       <footer>
-        Máquina 01 · FastAPI · Next.js
+        Industrial Monitor ·{" "}
+        {machines.length}{" "}
+        {machines.length === 1
+          ? "máquina"
+          : "máquinas"}{" "}
+        · FastAPI · Next.js
       </footer>
     </main>
   );
