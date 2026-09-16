@@ -1383,3 +1383,18 @@ footer {
     grid-template-columns: 1fr;
   }
 }
+.telemetry-strip {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+@media (max-width: 980px) {
+  .telemetry-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .telemetry-strip {
+    grid-template-columns: 1fr;
+  }
+}

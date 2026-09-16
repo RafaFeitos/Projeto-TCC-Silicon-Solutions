@@ -48,6 +48,14 @@ const emptyState: CurrentState = {
   timestamp: "",
   alert: null,
   severity: null,
+  rpm_raw: null,
+  rpm_filtered: null,
+  rpm_pulses: null,
+  rpm_pulse_hz: null,
+  temperature_c: null,
+  ntc_raw: null,
+  ntc_voltage: null,
+  ntc_resistance: null,
 };
 
 function emptyStateFor(
@@ -105,6 +113,23 @@ function formatHours(
   return `${value.toFixed(1)} h`;
 }
 
+function formatRpm(
+  value?: number | null,
+) {
+  return value == null
+    ? "—"
+    : `${value.toFixed(0)} rpm`;
+}
+
+
+function formatTemperature(
+  value?: number | null,
+) {
+  return value == null
+    ? "—"
+    : `${value.toFixed(1)} °C`;
+}
+
 function normalizeState(
   value: Partial<CurrentState>,
 ): CurrentState {
@@ -122,6 +147,14 @@ function normalizeState(
     timestamp: value.timestamp ?? "",
     alert: value.alert ?? null,
     severity: value.severity ?? null,
+    rpm_raw: value.rpm_raw ?? null,
+    rpm_filtered: value.rpm_filtered ?? null,
+    rpm_pulses: value.rpm_pulses ?? null,
+    rpm_pulse_hz: value.rpm_pulse_hz ?? null,
+    temperature_c: value.temperature_c ?? null,
+    ntc_raw: value.ntc_raw ?? null,
+    ntc_voltage: value.ntc_voltage ?? null,
+    ntc_resistance: value.ntc_resistance ?? null,
   };
 }
 
@@ -816,7 +849,26 @@ async function handleRegisterMachine(
                         )}
                       </strong>
                     </div>
-
+                    <div>
+                      <span className="metric-label">
+                        RPM
+                      </span>
+                    <strong>
+                      {formatRpm(
+                        summary.state?.rpm_filtered,
+                      )}
+                    </strong>
+                    </div>
+                    <div>
+                      <span className="metric-label">
+                        Temperatura
+                      </span>
+                    <strong>
+                      {formatTemperature(
+                        summary.state?.temperature_c,
+                      )}
+                    </strong>
+                    </div>
                     <div>
                       <span className="metric-label">
                         Disponibilidade
@@ -956,6 +1008,27 @@ async function handleRegisterMachine(
                 janela recente
               </small>
             </div>
+            <div className="kpi">
+              <span>RPM</span>
+              <strong className="value-mono">
+                {formatRpm(state.rpm_filtered)}
+              </strong>
+
+              <small>
+                E18-D80NK · valor filtrado
+              </small>
+            </div>
+            <div className="kpi">
+              <span>TEMPERATURA</span>
+
+              <strong className="value-mono">
+                {formatTemperature(state.temperature_c)}
+              </strong>
+
+              <small>
+                NTC 10K MF52
+              </small>
+            </div>
           </section>
 
 
@@ -1046,7 +1119,7 @@ async function handleRegisterMachine(
               />
 
 
-              <div className="metric-strip">
+              <div className="metric-strip telemetry-strip">
                 <div>
                   <span>
                     Leitura atual
@@ -1068,6 +1141,26 @@ async function handleRegisterMachine(
                     {state.rms.toFixed(
                       4,
                     )}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    RPM filtrado
+                  </span>
+
+                  <strong>
+                    {formatRpm(state.rpm_filtered)}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Temperatura
+                  </span>
+
+                  <strong>
+                    {formatTemperature(state.temperature_c)}
                   </strong>
                 </div>
 
@@ -1171,6 +1264,28 @@ async function handleRegisterMachine(
 
                   <strong>
                     {state.source}
+                </strong>
+                </div>
+                <div>
+                <span>RPM bruto</span>
+                  <strong>
+                    {formatRpm(state.rpm_raw)}
+                  </strong>
+                </div>
+                <div>
+                  <span>Frequência E18</span>
+
+                  <strong>
+                    {state.rpm_pulse_hz == null
+                      ? "—"
+                      : `${state.rpm_pulse_hz.toFixed(2)} Hz`}
+                  </strong>
+                </div>
+                <div>
+                  <span>Temperatura</span>
+
+                  <strong>
+                    {formatTemperature(state.temperature_c)}
                   </strong>
                 </div>
 

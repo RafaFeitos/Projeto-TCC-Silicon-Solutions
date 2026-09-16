@@ -10,6 +10,14 @@ export type Inference = {
   state: string;
   alert?: string | null;
   severity?: string | null;
+  rpm_raw?: number | null;
+  rpm_filtered?: number | null;
+  rpm_pulses?: number | null;
+  rpm_pulse_hz?: number | null;
+  temperature_c?: number | null;
+  ntc_raw?: number | null;
+  ntc_voltage?: number | null;
+  ntc_resistance?: number | null;
 };
 
 export type DatasetInfo = {
