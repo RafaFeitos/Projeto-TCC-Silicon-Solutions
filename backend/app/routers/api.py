@@ -39,6 +39,14 @@ def inference_to_dict(item) -> dict:
         "state": item.state,
         "alert": item.alert,
         "severity": item.severity,
+        "rpm_raw": item.rpm_raw,
+        "rpm_filtered": item.rpm_filtered,
+        "rpm_pulses": item.rpm_pulses,
+        "rpm_pulse_hz": item.rpm_pulse_hz,
+        "temperature_c": item.temperature_c,
+        "ntc_raw": item.ntc_raw,
+        "ntc_voltage": item.ntc_voltage,
+        "ntc_resistance": item.ntc_resistance,
     }
 
 @router.get("/health")
@@ -197,6 +205,14 @@ def machine_state(machine_id: int):
         timestamp=item["timestamp"],
         alert=item.get("alert"),
         severity=item.get("severity"),
+        rpm_raw=item.get("rpm_raw"),
+        rpm_filtered=item.get("rpm_filtered"),
+        rpm_pulses=item.get("rpm_pulses"),
+        rpm_pulse_hz=item.get("rpm_pulse_hz"),
+        temperature_c=item.get("temperature_c"),
+        ntc_raw=item.get("ntc_raw"),
+        ntc_voltage=item.get("ntc_voltage"),
+        ntc_resistance=item.get("ntc_resistance"),
     )
 
 

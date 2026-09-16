@@ -14,7 +14,14 @@ class Inference(BaseModel):
     state: str
     alert: str | None = None
     severity: str | None = None
-
+    rpm_raw: float | None = None
+    rpm_filtered: float | None = None
+    rpm_pulses: int | None = None
+    rpm_pulse_hz: float | None = None
+    temperature_c: float | None = None
+    ntc_raw: int | None = None
+    ntc_voltage: float | None = None
+    ntc_resistance: float | None = None
 
 class DatasetInfo(BaseModel):
     file_name: str
@@ -38,6 +45,14 @@ class CurrentState(BaseModel):
     timestamp: datetime
     alert: str | None = None
     severity: str | None = None
+    rpm_raw: float | None = None
+    rpm_filtered: float | None = None
+    rpm_pulses: int | None = None
+    rpm_pulse_hz: float | None = None
+    temperature_c: float | None = None
+    ntc_raw: int | None = None
+    ntc_voltage: float | None = None
+    ntc_resistance: float | None = None
 
 class StreamStatus(BaseModel):
     running: bool
