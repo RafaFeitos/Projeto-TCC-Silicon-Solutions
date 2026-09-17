@@ -1,0 +1,36 @@
+menu "BNO085"
+
+    config BNO085_I2C_ADDR
+        hex "Endereco I2C do BNO085"
+        default 0x4A
+        help
+            0x4A quando ADR esta em GND; 0x4B quando ADR esta em 3V3.
+
+    config BNO085_I2C_PORT
+        int "Numero da porta I2C do BNO085 (I2C_NUM_x)"
+        default 1
+        help
+            Porta I2C usada pelo sensor externo. O driver BNO085 inicializa
+            diretamente a API I2C Master atual do ESP-IDF.
+
+    config BNO085_SDA_GPIO
+        int "GPIO do pino SDA do BNO085"
+        default 6
+
+    config BNO085_SCL_GPIO
+        int "GPIO do pino SCL do BNO085"
+        default 7
+
+    config BNO085_RESET_GPIO
+        int "GPIO do pino RESET do BNO085"
+        default 4
+        help
+            Pino ativo-baixo para reset por hardware.
+
+    config BNO085_INT_GPIO
+        int "GPIO do pino INT do BNO085"
+        default 5
+        help
+            Pino ativo-baixo de data-ready/interrupcao do sensor.
+
+endmenu

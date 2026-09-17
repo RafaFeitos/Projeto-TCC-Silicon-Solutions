@@ -443,7 +443,7 @@ class SerialIngestor:
         label = cls._normalize_label(
             predicted_class
         )
-        if "desligado" in label:
+        if "desligado" in label or label == "parado":
             return (
                 "DESLIGADO",
                 None,
